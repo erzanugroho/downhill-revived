@@ -23,6 +23,7 @@ expected/
 
 # --- Build outputs ---------------------------------------------------------------------
 build/
+.wrangler/
 build-try/
 build-nonmatching/
 build.ninja
