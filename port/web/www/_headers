@@ -1,0 +1,9 @@
+# Cloudflare Pages headers for the browser build (the page's folder: port/web/www with build/web
+# as build/). Cross-origin isolation for SharedArrayBuffer, and a CSP whose connect-src lets the
+# game reach the official race server (net.js; serve.mjs sends the same locally).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://dhd.skuza.app https://dhd.skuza.app; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff

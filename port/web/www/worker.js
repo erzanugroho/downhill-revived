@@ -104,12 +104,18 @@ async function start(m) {
   // speed down to 30 a second, not slow motion (finding 139);
   // host_wall_seconds is then the real clock (performance.now). ?env.DHD_FPS_WALL= turns it off
   // (the virtual clock, field / 60, as run_headless.mjs's deterministic runs keep).
+  // DHD_NET_SERVER: the official race server, the native game's default (online_menu.c shows no
+  // server without it); ?env.DHD_NET_SERVER= picks another, as dhd.ini's server = natively.
   const env = { DHD_ISO: '/disc.iso', DHD_HEADLESS: '1', DHD_FRAME_CLOCK: '1', DHD_FPS_WALL: '1', DHD_SKIP_MOVIES: '1',
-    DHD_RENDER: 'native', DHD_SETTINGS: 'dhd.ini', ...(threaded ? { DHD_GRAPHICS_ORDERED: '1' } : {}),
+    DHD_RENDER: 'native', DHD_SETTINGS: 'dhd.ini', DHD_NET_SERVER: 'wss://dhd.skuza.app',
+    // the online menu logs its screen and row as they change: the page's lobby (lobby.js) steers by it
+    DHD_ONLINE_MENU_TRACE: '1',
+    ...(threaded ? { DHD_GRAPHICS_ORDERED: '1' } : {}),
     ...BROWSER_PC_SETTINGS, ...(m.env || {}) };
   const settings = await createSettings(env, say);
   let core, graphics, queue, memory, bytes, dv, arena = 0x07000000, current = 65, csr = 0x1f80, field = 0;
   const strings = new Map(), files = new Map(), fibers = new Map(); let nextFile = 1, nextDir = 1; const dirs = new Map();
+  let discJob = null;  // the disc image's online check: { done, answer, sha256, note }
   const refresh = () => { bytes = new Uint8Array(memory.buffer); dv = new DataView(memory.buffer); };
   function fold(a) { a >>>= 0; const low = a & 0x1fffffff;
     if (a >= 0x38000000 && a < 0x3a000000) return a - 0x30000000;
@@ -145,7 +151,37 @@ async function start(m) {
   const channel = new MessageChannel(); let wake = null; channel.port1.onmessage = () => { const w = wake; wake = null; w?.(); };
   const yieldTask = () => new Promise(r => { wake = r; channel.port2.postMessage(0); });
   let period = 1000 / 59.94, due = performance.now(), shown = 0, lastReport = performance.now(), lastField = 0;
-  let riding = 0, held = new Int8Array(KEYS.length);
+  let riding = 0, held = new Int8Array(KEYS.length), menu = -1, tracksSent = false;
+  // The tracks' names as the online menu shows them (online_menu.c track_name: the name up to its
+  // country, then the mode), from the game's table D_0026EFE8 in EE RAM, for the page's lobby list.
+  function trackNames() {
+    const ee = a => 0x08000000 + (a & 0x01ffffff);
+    return Array.from({ length: 26 }, (_, i) => {
+      const p = dv.getUint32(ee(0x0026EFE8 + 4 * i), true), at = ee(p);
+      const full = new TextDecoder().decode(bytes.subarray(at, bytes.indexOf(0, at))).slice(0, 80);
+      const comma = full.indexOf(','), space = full.lastIndexOf(' ');
+      return comma >= 0 && space > comma ? full.slice(0, comma) + full.slice(space) : i === 23 ? `${full} (Arena)` : full;
+    });
+  }
+  // Text fields (the online menu's name and join code; port/hle/text_input.c): while one is open
+  // the page sends what is typed ('text' messages) and the letter keys go to the field, not the pad
+  // (the arrows still work the pad's letter picker).
+  const ARROWS = new Set([0x25, 0x26, 0x27, 0x28]);
+  const text = { active: false, typed: [] };
+  onmessage = e => { if (e.data.type === 'text' && text.active) text.typed.push(...e.data.chars); };
+  function textEdit(a, capacity, allowedAt) {
+    const allowed = str(allowedAt), typed = text.typed.splice(0);
+    let value = str(a);
+    const put = () => { const b = new TextEncoder().encode(value), o = span(a, b.length + 1); o.set(b); o[b.length] = 0; };
+    for (const c of typed) {
+      if (c === 13 || c === 10) return 1;
+      if (c === 27) return -1;
+      if (c === 8) { value = value.slice(0, -1); put(); continue; }
+      const up = String.fromCharCode(c).toUpperCase();
+      if (c < 128 && allowed.includes(up) && value.length + 1 < capacity) { value += up; put(); }
+    }
+    return 0;
+  }
   // host_pad_device: player `port` (0-3; played by hand the game opens four pads on a multitap,
   // pad.c) as hle.h's HostPad. connected: a gamepad for that player, player 1 always (the keyboard).
   function pad(port, out) {
@@ -157,8 +193,11 @@ async function start(m) {
     if (port === 0) {
       riding = dv.getInt32(0x0829E290, true) !== 0;
       Atomics.store(mouse, 12, riding ? 1 : 0);  // the page hides the cursor while riding
+      // the game's menu screen (EE 0x0029DED8, menu_nav.h): the page's lobby follows it
+      const shows = dv.getInt32(0x0829DED8, true); if (shows !== menu) { menu = shows; post('menu', { menu });
+        if (menu === 15 && !tracksSent) { tracksSent = true; post('tracks', { names: trackNames() }); } }
       const dir = [0, 0, 0];
-      KEYS.forEach((k, i) => { if (!Atomics.load(keys, k[0])) { held[i] = 0; return; }
+      KEYS.forEach((k, i) => { if (!Atomics.load(keys, k[0]) || (text.active && !ARROWS.has(k[0]))) { held[i] = 0; return; }
         if (!held[i]) held[i] = riding ? 2 : 1;
         if (held[i] === 2 && k[3]) dir[k[3]] += k[4]; else buttons |= held[i] === 2 ? k[2] : k[1]; });
       if (dir[1]) o[4] = dir[1] < 0 ? 0 : 255;  // left stick x, full deflection while riding
@@ -250,6 +289,23 @@ async function start(m) {
       const id = nextDir++; dirs.set(id, { list, at: 0 }); entry(list[0], out); return id; },
     host_dir_next: (id, out) => { const d = dirs.get(id); if (!d || ++d.at >= d.list.length) return 0; entry(d.list[d.at], out); return 1; },
     host_dir_close: id => { dirs.delete(id); },
+    // The disc image's online check (host_sdl.c's job): disc_check.js hashes the image in a worker
+    // of its own, so the menu keeps running; poll gives dhd_disc's answer once, then idles.
+    host_service_disc_check_start: () => { if (discJob) return 0;
+      discJob = { done: false }; const w = new Worker('disc_check.js', { type: 'module' });
+      const finish = answer => { discJob = { done: true, ...answer }; w.terminate(); };
+      w.onmessage = e => finish(e.data); w.onerror = e => finish({ answer: -1, note: e.message || 'the check failed' });
+      w.postMessage(m.file ? { file: m.file } : { isoUrl: new URL(m.isoUrl, location.href).href }); return 1; },
+    host_service_disc_check_poll: (digest, note, size) => { if (!discJob) return -1; if (!discJob.done) return 0;
+      const { answer, sha256, note: said = '' } = discJob; discJob = null;
+      if (sha256) span(digest, 32).set(sha256.match(/../g).map(h => parseInt(h, 16)));
+      if (size > 0) { const b = new TextEncoder().encode(said).subarray(0, size - 1), o = span(note, b.length + 1); o.set(b); o[b.length] = 0; }
+      return answer; },
+    host_service_text_input_begin: () => { text.active = true; text.typed = []; post('text', { active: true }); },
+    host_service_text_input_end: () => { if (!text.active) return; text.active = false; text.typed = []; post('text', { active: false }); },
+    host_service_text_input_edit: textEdit,
+    // the room's join code, copied from the room (the page writes it to the clipboard)
+    host_service_clipboard_set: a => { post('clipboard', { text: str(a) }); return 1; },
     host_service_host_disc_ready: () => 0, host_service_host_skip_movies: () => 1,
     host_service_host_pad_device: (port, a) => pad(port, a),
     // host_api.h's HostMouse, 36 bytes, from the page (main.js)

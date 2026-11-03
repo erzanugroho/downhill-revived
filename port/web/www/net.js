@@ -1,11 +1,11 @@
 // Browser network host services. Struct offsets come from the shared C header.
 import { layout } from './net_layout.js';
 
-// Online play is not offered in the browser (finding 143): the page's CSP blocks the race server's
-// socket, so it never worked here. The core asks host_service_net_offered and shows no ONLINE row;
-// the connections below refuse whatever asks. The same switch is off on Android (port/net/net.c).
-// online: true only in check_net.mjs, which tests the session code for when it comes back.
-const ONLINE_OFFERED = false;
+// Online play in the browser: the core asks host_service_net_offered and shows the ONLINE row. The
+// page's CSP must let it reach the race server (connect-src wss://dhd.skuza.app https://dhd.skuza.app,
+// port/web/www/_headers); the official page's connect-src 'self' is why it never worked there
+// (finding 143). online: false makes every connection below refuse (check_net.mjs).
+const ONLINE_OFFERED = true;
 
 export function createNet({span, str, online = ONLINE_OFFERED}) {
   let base = 'wss://dhd.skuza.app', name = '', version = '', iso = '', ws;

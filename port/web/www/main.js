@@ -2,10 +2,14 @@
 // mouse (or touch) and sound through SharedArrayBuffers (the worker never returns to its event loop mid-field, so
 // messages would wait). Needs a cross-origin isolated page: serve.mjs sends COOP/COEP.
 import { startSettings } from './settings.js';
+import { createLobby } from './lobby.js';
 const $ = id => document.getElementById(id);
 const status = $('status'), log = $('log'), canvas = $('screen');
 const params = new URLSearchParams(location.search);
 const addLog = text => { log.textContent += text + '\n'; log.scrollTop = log.scrollHeight; };
+const events = new EventTarget();  // the worker's messages, by type
+// the page's own inputs (the lobby's name and code fields) keep their keys from the game
+const isField = t => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t?.isContentEditable;
 
 if (!crossOriginIsolated) status.textContent = 'This page needs cross-origin isolation: start it with port/web/serve.mjs.';
 const input = new SharedArrayBuffer(256 + 32 * 4 + 16 * 4);
@@ -23,8 +27,19 @@ function vk(code) {
   if (named[code]) return named[code];
   const m = /^Key([A-Z])$/.exec(code); return m ? m[1].charCodeAt(0) : 0;
 }
-let running = false;
-addEventListener('keydown', e => { const k = vk(e.code); if (!k || !running || e.altKey || e.ctrlKey || e.metaKey) return;
+let running = false, game = null, typing = false;
+// While the game has a text field open (the online menu's name and join code), what is typed goes
+// to it as characters: Enter 13, Escape 27, Backspace 8; Ctrl+V pastes the clipboard's text.
+const typeChars = chars => { if (game && typing && chars.length) game.postMessage({ type: 'text', chars }); };
+addEventListener('keydown', e => {
+  if (typing && running && !isField(e.target)) {
+    const named = { Enter: 13, NumpadEnter: 13, Escape: 27, Backspace: 8 }[e.code];
+    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV')
+      navigator.clipboard?.readText().then(t => typeChars([...t].map(c => c.charCodeAt(0)))).catch(() => {});
+    else if (named) typeChars([named]);
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) typeChars([e.key.charCodeAt(0)]);
+  }
+  const k = vk(e.code); if (!k || !running || e.altKey || e.ctrlKey || e.metaKey || isField(e.target)) return;
   Atomics.store(keys, k, 1); e.preventDefault(); });
 addEventListener('keyup', e => { const k = vk(e.code); if (k) Atomics.store(keys, k, 0); });
 addEventListener('blur', () => keys.fill(0));
@@ -129,13 +144,17 @@ async function start(source) {
   } catch (e) { addLog(`no sound: ${e}`); }
   // After the sound, which needs the Start click; read again at each start, as the game reads it.
   if (await shape(source.env ?? {})) { canvas.width = 1708; canvas.height = 960; }
-  const worker = new Worker('worker.js', { type: 'module' });
+  const worker = new Worker('worker.js', { type: 'module' }); game = worker;
   const offscreen = canvas.transferControlToOffscreen();
   worker.onmessage = e => { const m = e.data;
+    events.dispatchEvent(new CustomEvent(m.type, { detail: m }));  // the lobby (lobby.js) follows the game
     if (m.type === 'log') addLog(m.text);
+    else if (m.type === 'menu') window.dhdMenu = m.menu;
+    else if (m.type === 'text') typing = m.active;
+    else if (m.type === 'clipboard') navigator.clipboard?.writeText(m.text).catch(() => {});
     else if (m.type === 'error') { addLog('ERROR ' + m.text); status.textContent = 'stopped: ' + m.text.split('\n')[0];
       $('logPanel').hidden = false; }
-    else if (m.type === 'running') status.textContent = 'running';
+    else if (m.type === 'running') { status.textContent = 'running'; lobby.started(); }
     else if (m.type === 'exit') status.textContent = `game exited (${m.status})`;
     else if (m.type === 'status') { status.textContent = `field ${m.field}  ${m.fps.toFixed(1)} fields/s  picture ${m.size}  draws ${m.draws}  batches ${m.dispatches}  readbacks ${m.reads}  sound ${m.sound} s${m.riding ? '  riding' : ''}`;
       document.title = `DHD ${m.fps.toFixed(1)} fps (field ${m.field})`; window.dhdStatus = m; (window.dhdHistory ??= []).push([m.field, +m.fps.toFixed(2), m.draws]); }
@@ -159,6 +178,12 @@ $('start').onclick = () => start({ file: $('iso').files[0], env });
 // ?iso=test starts with it at once (headless checks; the ISO never leaves the machine).
 // ?env.NAME=value sets a DHD_* variable for the game (tests: DHD_NAV, DHD_RACE_PAD scripts).
 const env = Object.fromEntries([...params].filter(([k]) => k.startsWith('env.')).map(([k, v]) => [k.slice(4), v]));
+// The online lobby beside the picture (lobby.js): it starts the game when the disc is chosen.
+const lobby = createLobby({ root: $('lobby'), events, keys, mouse, canvas, log: addLog,
+  typeText: chars => game?.postMessage({ type: 'text', chars }), isRunning: () => running,
+  canStart: () => !!$('iso').files[0], startGame: () => $('start').click(),
+  server: env.DHD_NET_SERVER || 'wss://dhd.skuza.app' });
+$('lobbyButton').onclick = e => { e.stopPropagation(); $('lobby').classList.toggle('open'); };
 // Tests read and save no settings unless they name them (?env.DHD_SETTINGS=<name>), as the tools'
 // DHD_SETTINGS=none natively.
 if (params.get('iso') === 'test') start({ isoUrl: '/test-iso', env: { DHD_SETTINGS: 'none', ...env } });

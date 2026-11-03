@@ -2,12 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createNet } from './www/net.js';
 import { layout } from './www/net_layout.js';
-test('no online in the browser: not offered, and nothing connects (finding 143)',()=>{
+test('online is offered in the browser',()=>{
+  const bytes=new Uint8Array(64),span=(a,n)=>bytes.subarray(a,a+n);
+  assert.equal(createNet({span,str:()=>''}).host_service_net_offered(),1);
+});
+test('online off: not offered, and nothing connects (finding 143)',()=>{
   const bytes=new Uint8Array(4096),span=(a,n)=>bytes.subarray(a,a+n);
   const str=a=>new TextDecoder().decode(bytes.subarray(a,bytes.indexOf(0,a)));
   let made=0;
   globalThis.WebSocket=class {constructor(){made++;}};
-  const api=createNet({span,str});
+  const api=createNet({span,str,online:false});
   assert.equal(api.host_service_net_offered(),0);
   assert.equal(api.host_service_net_create_room(),-1);
   assert.equal(api.host_service_net_join_room(0),-1);

@@ -67,7 +67,8 @@ Known gaps:
 - Online races have been tested with two games (PC and Mac) and up to nine scripted players, not
   yet with ten people on ten PCs.
 - The browser version (experimental) at <https://downhill-revived.pages.dev/play/> needs Chrome or
-  Edge 137 or later and a fast PC; online races are off there. It reads your `.iso` in place in
+  Edge 137 or later and a fast PC; online races are off there (a page hosted with `port/web/www/_headers`
+  offers them, finding 144). It reads your `.iso` in place in
   the browser and uploads nothing. Its source is `port/web`.
 - The game has only been tested on a few PCs. Please report problems.
 

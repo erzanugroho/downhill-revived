@@ -19,7 +19,11 @@ const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
   '.json': 'application/json' };
 const server = http.createServer((req, res) => {
   const headers = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp',
-    'Cross-Origin-Resource-Policy': 'same-origin', 'Cache-Control': 'no-store' };
+    'Cross-Origin-Resource-Policy': 'same-origin', 'Cache-Control': 'no-store',
+    // www/_headers' CSP, so the race server's socket is allowed here as where the page is hosted
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; " +
+      "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://dhd.skuza.app https://dhd.skuza.app; " +
+      "base-uri 'none'; form-action 'none'; frame-ancestors 'none'" };
   const url = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   let file = null;
   if (url === '/test-iso' && iso) file = iso;

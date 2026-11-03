@@ -31,10 +31,15 @@ const { ws, send, evaluate: evaluateIn, events } = await connect(wsUrl);
 const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
 const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
 await send('Page.enable', {}, sessionId); await send('Runtime.enable', {}, sessionId);
-let workerSession = null;
+// Every worker, nested ones too (the threaded build's game worker starts the VU and GS workers):
+// the game worker's profile is browser.cpuprofile, the others browser-<script>.cpuprofile.
+let workerSession = null; const workers = new Map();
 if (profileAt) {
   ws.addEventListener('message', e => { const m = JSON.parse(e.data);
-    if (m.method === 'Target.attachedToTarget' && m.params.targetInfo.type === 'worker') workerSession = m.params.sessionId; });
+    if (m.method !== 'Target.attachedToTarget' || m.params.targetInfo.type !== 'worker') return;
+    const name = path.basename(new URL(m.params.targetInfo.url).pathname, '.js');
+    workers.set(m.params.sessionId, name); if (name === 'worker') workerSession = m.params.sessionId;
+    send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, m.params.sessionId); });
   await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId);
 }
 let profiled = false;
@@ -51,11 +56,12 @@ while ((Date.now() - tStage) / 1000 < seconds) {
   if (/stopped|exited/.test(s.text || '') || (s.s && s.s.field >= until)) break;
   if (profileAt && !profiled && workerSession && s.s && s.s.field >= profileAt) {
     profiled = true;
-    await send('Profiler.enable', {}, workerSession); await send('Profiler.setSamplingInterval', { interval: 500 }, workerSession);
-    await send('Profiler.start', {}, workerSession);
+    const sessions = [...workers.keys()];
+    for (const w of sessions) { await send('Profiler.enable', {}, w); await send('Profiler.setSamplingInterval', { interval: 500 }, w); }
+    await Promise.all(sessions.map(w => send('Profiler.start', {}, w)));
     await new Promise(r => setTimeout(r, profileFor * 1000));
-    const prof = await send('Profiler.stop', {}, workerSession);
-    fs.writeFileSync(path.join(root, 'build/web/browser.cpuprofile'), JSON.stringify(prof.result.profile));
+    for (const w of sessions) { const prof = await send('Profiler.stop', {}, w), name = workers.get(w);
+      fs.writeFileSync(path.join(root, `build/web/browser${name === 'worker' ? '' : '-' + name}.cpuprofile`), JSON.stringify(prof.result.profile)); }
     console.error('profile written at field', s.s.field);
   }
 }

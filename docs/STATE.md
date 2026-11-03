@@ -523,7 +523,8 @@ findings 039-047, 053-054, 065 and 072 and in this file's history.
   `MIN_VERSION` (`wrangler.jsonc`, now 0.7.0) turns older clients
   away with "update to play online". Protocol: `docs/online-protocol.md`. Steps:
   `online/server/README.md`.
-- Offered on Windows, macOS and Linux; not on Android or in the browser (finding 143: the host's
+- Offered on Windows, macOS, Linux and in the browser (finding 144: `www/net.js`, the disc check in
+  `www/disc_check.js`, a CSP that allows the server); not on Android (finding 143: the host's
   `host_service_net_offered`, no ONLINE row there).
 - Client: `port/net/` (lobby client, hashes; `net.h`) over `port/net/ws.h`, the WebSocket and HTTPS
   client of every native build: the Rust crate `dhd_net` (`port/render/net`, tungstenite over rustls
