@@ -1,0 +1,8 @@
+{
+  // The browser build on Cloudflare as a Worker's static assets (no script): node port/web/stage.mjs,
+  // then npx wrangler deploy -c port/web/wrangler.jsonc. www/_headers gives the page its
+  // cross-origin isolation and the CSP that lets it reach the race server. Rename to your own.
+  "name": "downhill-online",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "../../build/pages" }
+}

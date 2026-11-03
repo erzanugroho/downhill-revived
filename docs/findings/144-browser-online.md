@@ -82,10 +82,19 @@ which needs the browser modules rebuilt (`build_graphics.py`, from the player's 
 ## Hosting
 
 The page is `port/web/www` with `build/web` as its `build/` folder (`python port/web/build.py`, or
-the same modules of the matching release's official page). For Cloudflare Pages:
+the same modules of the matching release's official page). `port/web/stage.mjs` copies both into
+`build/pages`; on Cloudflare it is a Worker's static assets (`port/web/wrangler.jsonc`, no script),
+which keep `_headers`, and static asset requests cost nothing on the free plan:
 
-    mkdir dist && cp port/web/www/* dist/ && cp -r build/web dist/build
-    npx wrangler pages deploy dist --project-name <name>
+    node port/web/stage.mjs
+    npx wrangler login
+    npx wrangler deploy -c port/web/wrangler.jsonc
+
+`wrangler pages project create` (wrangler 4.157) now hands new Pages projects to Workers and fails
+for a folder like this one, hence the Worker. Checked on the deployed page: the headers above,
+`crossOriginIsolated`, every module served (`application/wasm`), the lobby's list from the
+official server, `?join=CODE` filled in. The site's own `/assets` (fonts, the evening backdrop,
+favicon) aren't part of the page: it falls back to system fonts and the plain night colour.
 
 The browser's speed (finding 087: about 25-45 fields/s) is unchanged; with `DHD_FPS_WALL=1`
 (finding 139) a slow PC runs fewer, longer updates at the game's speed rather than slow motion.
