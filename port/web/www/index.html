@@ -165,6 +165,46 @@
     .lobby-toggle { display: none; }
   }
 
+  /* The on-screen pad (touch.js) over the picture, sized by the frame (cqmin). Only its controls
+     take touches; a tap elsewhere on the picture is the menus' pointer, as with a mouse. */
+  .touchpad { position: absolute; inset: 0; z-index: 3; pointer-events: none; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; touch-action: none; }
+  .touchpad[hidden] { display: none; }
+  .touchpad > * { pointer-events: auto; touch-action: none; }
+  .t-stick { position: absolute; left: 5cqmin; bottom: 6cqmin; width: 32cqmin; height: 32cqmin; border-radius: 50%;
+    background: rgba(20, 15, 37, .3); border: 2px solid rgba(245, 239, 248, .35); }
+  .t-knob { position: absolute; left: 30%; top: 30%; width: 40%; height: 40%; border-radius: 50%; pointer-events: none;
+    background: rgba(245, 239, 248, .42); border: 2px solid rgba(255, 198, 90, .75); }
+  .t-btn, .t-tool { position: absolute; display: grid; place-items: center; padding: 0; cursor: pointer;
+    color: rgba(245, 239, 248, .88); background: rgba(20, 15, 37, .34); border: 2px solid rgba(245, 239, 248, .38);
+    font: 900 6cqmin/1 var(--font); -webkit-tap-highlight-color: transparent; }
+  .t-btn { width: 13cqmin; height: 13cqmin; border-radius: 50%; }
+  .t-btn.on { color: var(--night); background: rgba(255, 198, 90, .7); border-color: var(--gold); }
+  .b-cross { right: 15.5cqmin; bottom: 5.5cqmin; } .b-triangle { right: 15.5cqmin; bottom: 29.5cqmin; }
+  .b-circle { right: 3.5cqmin; bottom: 17.5cqmin; } .b-square { right: 27.5cqmin; bottom: 17.5cqmin; }
+  .b-l1, .b-l2, .b-r1, .b-r2 { width: 16cqmin; height: 8.5cqmin; border-radius: 2cqmin; font-size: 4.2cqmin; }
+  .b-l2 { left: 4cqmin; top: 4cqmin; } .b-l1 { left: 4cqmin; top: 14.5cqmin; }
+  .b-r2 { right: 4cqmin; top: 4cqmin; } .b-r1 { right: 4cqmin; top: 14.5cqmin; }
+  .b-select, .b-start { bottom: 3cqmin; width: 17cqmin; height: 6.5cqmin; border-radius: 3.5cqmin; font-size: 3cqmin; }
+  .b-select { left: calc(50% - 19cqmin); } .b-start { left: calc(50% + 2cqmin); }
+  .t-bar { position: absolute; top: 3cqmin; left: 50%; transform: translateX(-50%); display: flex; gap: 2.5cqmin; }
+  .t-tool { position: static; width: 9cqmin; height: 9cqmin; border-radius: 50%; font-size: 4.6cqmin; }
+
+  /* A phone or tablet while the game runs: the picture fills the screen (letterboxed), the bars
+     hide, and the lobby is a panel the pad's ☰ opens. */
+  body.touch.running .bar, body.touch.running .tools { display: none; }
+  body.touch.running .stage { position: fixed; inset: 0; z-index: 1; width: 100vw; height: 100dvh; aspect-ratio: auto;
+    border-radius: 0; box-shadow: none; }
+  body.touch.running #screen { object-fit: contain; }
+  body.touch.running .lobby:not(.open) { display: none; }
+  body.touch.running .lobby.open { display: flex; position: fixed; z-index: 10; top: 2dvh; right: 2vw; bottom: auto;
+    width: min(24rem, 96vw); max-height: 96dvh; }
+  @media (orientation: portrait) {
+    body.touch.running::after { content: "Turn your phone sideways to play"; position: fixed; z-index: 4; top: 1rem; left: 50%;
+      transform: translateX(-50%); padding: .5rem 1rem; border-radius: 3px; background: rgba(27, 21, 48, .9);
+      color: var(--gold); font-weight: 700; font-size: .9rem; white-space: nowrap; pointer-events: none; }
+  }
+
   /* Small or short windows: before Start the column flows at its own height and the page scrolls. */
   @media (max-width: 760px), (max-height: 520px) {
     body:not(.running) { overflow-y: auto; }

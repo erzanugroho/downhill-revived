@@ -60,6 +60,23 @@ room in 16 s; a second tab opened with `?join=CODE` joined it in 21 s; the room 
 by their lobby names; both readied, the host's countdown started the race, and both rode it as puppet
 riders of each other at 60 fields/s.
 
+## Touch controls (`www/touch.js`)
+
+Finding 141's touch controls are host C (`touch.c`, `touch_host.c`) and the Rust overlay, none of
+which the browser modules have. The page gets its own on-screen PS2 pad instead, plain pad input
+as the Classic pad preset: a stick (the left stick; in the menus, pushed past half way, the d-pad
+too, by the worker's riding word), ✕ ○ □ △, L1/L2/R1/R2, SELECT and START, multi-touch with
+slide-on between buttons, merged into player 1's pad with a gamepad's. It shows on a coarse
+pointer (`?touch=1` / `?touch=0` decide instead); while the game runs the picture then fills the
+screen letterboxed, the bars hide, ☰ opens the lobby and ⛶ takes the whole page fullscreen in
+landscape. A tap on the picture stays the menus' pointer.
+
+Checked in headless Chrome at 844x390 with touch emulation and real touch events
+(`Input.dispatchTouchEvent`): ✕ left the title, three stick pushes moved the main menu to
+ONLINE, ✕ opened it and △ came back. Not checked on a phone: a phone needs Chrome 137 or later
+(JSPI) with WebGPU, and the speed of this build there is unknown (the Android APK is the phone
+build).
+
 ## Speed in the browser (this PC: i5-13400F, RTX 3090, headless Chrome)
 
 `check_browser.mjs` with race_compare's NAV, pad and seed; fields/s per phase from the page's

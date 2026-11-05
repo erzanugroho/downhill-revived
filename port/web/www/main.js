@@ -3,6 +3,7 @@
 // messages would wait). Needs a cross-origin isolated page: serve.mjs sends COOP/COEP.
 import { startSettings } from './settings.js';
 import { createLobby } from './lobby.js';
+import { createTouchPad } from './touch.js';
 const $ = id => document.getElementById(id);
 const status = $('status'), log = $('log'), canvas = $('screen');
 const params = new URLSearchParams(location.search);
@@ -48,8 +49,16 @@ addEventListener('blur', () => keys.fill(0));
 const GP = [16384, 8192, 32768, 4096, 1024, 2048, 256, 512, 1, 8, 2, 4, 16, 64, 128, 32];
 function pollPads() {
   const list = [...(navigator.getGamepads?.() || [])].filter(p => p && p.mapping === 'standard').slice(0, 4);
+  // the on-screen pad (touch.js) is player 1's, merged with a gamepad there
+  const t = touchPad.shown ? touchPad.state() : null;
   for (let port = 0; port < 4; port++) {
     const p = list[port], o = port * 8;
+    if (port === 0 && t && (!p || t.active)) {
+      const b = p ? GP.reduce((bits, bit, i) => bits | (p.buttons[i]?.pressed ? bit : 0), 0) : 0;
+      Atomics.store(pads, o + 1, b | t.bits); Atomics.store(pads, o + 2, 128); Atomics.store(pads, o + 3, 128);
+      Atomics.store(pads, o + 4, t.lx); Atomics.store(pads, o + 5, t.ly); Atomics.store(pads, o, 1);
+      continue;
+    }
     if (!p) { Atomics.store(pads, o, 0); continue; }
     let b = 0; p.buttons.forEach((x, i) => { if (x.pressed && GP[i]) b |= GP[i]; });
     const axis = v => Math.max(0, Math.min(255, Math.round(128 + (Math.abs(v) < 0.12 ? 0 : v) * 127.5)));
@@ -89,9 +98,20 @@ function cursor() {
 }
 
 // Fullscreen: a double click on the picture or the Fullscreen button (PC SETTINGS has no Display
-// row in the browser).
+// row in the browser). With the on-screen pad the whole page goes fullscreen (the pad is over the
+// picture, not in it), turned to landscape where the phone allows it.
 const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  else canvas.requestFullscreen?.().catch(e => addLog(`fullscreen: ${e.message}`)); };
+  else (touchMode ? document.documentElement : canvas).requestFullscreen?.({ navigationUI: 'hide' })
+    .then(() => touchMode && screen.orientation?.lock?.('landscape').catch(() => {}))
+    .catch(e => addLog(`fullscreen: ${e.message}`)); };
+
+// Phones and tablets (a coarse pointer; ?touch=1 or ?touch=0 decides instead): the on-screen pad
+// over the picture while the game runs, and the picture fills the screen (index.html's body.touch).
+const touchMode = params.has('touch') ? params.get('touch') !== '0' : matchMedia('(pointer: coarse)').matches;
+document.body.classList.toggle('touch', touchMode);
+const touchPad = createTouchPad({ root: document.querySelector('.stage'), riding: () => Atomics.load(mouse, 12) !== 0,
+  extra: [['☰', 'Online lobby', () => $('lobby').classList.toggle('open')], ['⛶', 'Fullscreen', () => fullscreen()]] });
+window.dhdTouch = touchPad;  // checks read its state
 canvas.ondblclick = fullscreen;
 $('fullscreen').onclick = () => { fullscreen(); canvas.focus(); };
 
@@ -134,6 +154,8 @@ async function shape(env) {
 
 async function start(source) {
   $('start').disabled = true; $('iso').disabled = true; running = true;
+  // a phone: fullscreen and landscape at once, while Start's tap still counts as the user's gesture
+  if (touchMode) { touchPad.show(true); if (navigator.userActivation?.isActive) fullscreen(); }
   document.body.classList.add('running'); status.textContent = 'starting';
   const hz = refreshHz();
   try {
